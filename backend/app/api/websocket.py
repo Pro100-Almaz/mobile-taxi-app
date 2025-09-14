@@ -107,7 +107,7 @@ router = APIRouter()
 #             await websocket_manager.disconnect_user(user_id)
 
 
-@router.get('/')
+@router.websocket('/')
 async def connect_websocket(websocket: WebSocket):
     socket_id = await manager.connect(websocket)
     try:
