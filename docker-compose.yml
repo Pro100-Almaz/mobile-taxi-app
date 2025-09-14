@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # Main WebSocket Service
+  taxi-websocket-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - GEO_DATA_FILE=/app/data/geo_locations_astana_hackathon
+    volumes:
+      - ./geo_locations_astana_hackathon:/app/data/geo_locations_astana_hackathon:ro
+    networks:
+      - taxi-network
+    depends_on:
+      - driver-generator-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Driver Generation Service
+  driver-generator-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.generator
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./geo_locations_astana_hackathon:/app/data/geo_locations_astana_hackathon:ro
+      - driver_cache:/app/cache
+    networks:
+      - taxi-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - taxi-network
+    command: redis-server --appendonly yes
+
+  # Frontend (for development/testing)
+  frontend:
+    build:
+      context: ./frontend/taxi-app
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    networks:
+      - taxi-network
+    environment:
+      - VITE_API_URL=http://taxi-websocket-service:8000
+
+volumes:
+  driver_cache:
+  redis_data:
+
+networks:
+  taxi-network:
+    driver: bridge
