@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 import logging
 from fastapi import WebSocket
+import uuid
 
 logger = logging.getLogger(__name__)
 
