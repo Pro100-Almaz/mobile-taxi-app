@@ -6,6 +6,7 @@ import asyncio
 import json
 from datetime import datetime
 import logging
+from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
@@ -315,3 +316,34 @@ class WebSocketManager:
 
 # Global WebSocket manager instance
 websocket_manager = WebSocketManager()
+
+
+
+
+# Manage all active websocket connections
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: dict[str, WebSocket] = {}
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        socket_id = str(uuid.uuid4())
+        self.active_connections[socket_id] = websocket
+
+        return socket_id
+
+    def disconnect(self, socket_id: str):
+        self.active_connections.pop(socket_id, None)
+
+    async def send_to_socket(self, socket_id: str, data: dict):
+        print(socket_id, type(socket_id))
+        ws = self.active_connections[socket_id]
+        if ws:
+            await ws.send_json(data)
+
+    async def send_to_all(self, message: str):
+        for ws in self.active_connections.values():
+            await ws.send_text(message)
+
+
+manager = ConnectionManager()
