@@ -42,6 +42,12 @@ npm run dev
 npm start
 ```
 
+### Testing Monitoring Features
+```bash
+npm run test-monitoring
+```
+This will test all the new monitoring endpoints and provide example usage.
+
 The server will start on `http://localhost:3001`
 
 ## API Endpoints
@@ -77,6 +83,16 @@ The server will start on `http://localhost:3001`
 #### API Documentation
 - **GET** `/api-docs`
 - Interactive Swagger/OpenAPI documentation for all endpoints
+
+#### Monitoring Dashboard
+- **GET** `/monitoring`
+- Real-time web dashboard for monitoring drivers and clients
+- Features:
+  - Live map with driver and client locations
+  - Real-time statistics (connections, rides, memory usage)
+  - Driver and client lists with status indicators
+  - WebSocket connection status
+  - Auto-refresh every 30 seconds
 
 ## Socket.IO Events
 
@@ -276,10 +292,13 @@ Visit `http://localhost:3001/api-docs` for interactive Swagger documentation inc
 ### Available Endpoints
 - **Health**: `GET /health`
 - **API Docs**: `GET /api-docs`
+- **Monitoring Dashboard**: `GET /monitoring`
 - **Drivers List**: `GET /api/drivers`
 - **Driver Connect**: `POST /api/drivers/connect`
 - **Driver Info**: `GET /api/drivers/{driverId}`
 - **Driver Location**: `PUT /api/drivers/{driverId}/location`
+- **Clients List**: `GET /api/clients`
+- **Dashboard Stats**: `GET /api/dashboard/stats`
 - **Notify Driver**: `POST /api/rides/notify-driver`
 - **Main WebSocket**: `ws://localhost:3001/`
 - **External Services WebSocket**: `ws://localhost:3001/external`
@@ -320,3 +339,81 @@ curl -X PUT http://localhost:3001/api/drivers/driver_123/location \
 ```bash
 curl http://localhost:3001/api/drivers
 ```
+
+#### Get All Clients
+```bash
+curl http://localhost:3001/api/clients
+```
+
+#### Get Dashboard Statistics
+```bash
+curl http://localhost:3001/api/dashboard/stats
+```
+
+## Monitoring Dashboard
+
+The monitoring dashboard provides a comprehensive real-time view of your taxi app's operations:
+
+### 🌟 **Key Features:**
+
+#### **📊 Real-time Statistics**
+- Total WebSocket connections
+- Active vs total drivers
+- Connected clients count
+- Pending and active rides
+- Server uptime and memory usage
+- Monitoring connections count
+
+#### **🗺️ Interactive Map**
+- Live driver locations with custom markers (🚗)
+- Client locations with custom markers (👤)
+- Color-coded status indicators:
+  - 🟢 Green: Active/Online
+  - 🔴 Red: Inactive/Offline
+  - ⚪ Gray: Unknown status
+- Auto-fitting map bounds to show all users
+- Click markers for detailed information
+
+#### **👥 User Lists**
+- **Drivers Panel**: Shows all registered drivers with locations and status
+- **Clients Panel**: Shows all connected clients with locations and activity
+- Real-time status indicators
+- Last update timestamps
+- Location coordinates display
+
+#### **🔄 Real-time Updates**
+- WebSocket connection to `/external` namespace
+- Automatic data refresh every 30 seconds
+- Live updates for:
+  - Driver location changes
+  - Driver status changes (online/offline)
+  - Ride creation/acceptance/completion
+  - New client connections
+
+#### **🎨 Modern UI**
+- Responsive design for desktop and mobile
+- Beautiful gradient backgrounds
+- Smooth animations and transitions
+- Professional card-based layout
+- Connection status indicator
+
+### 🚀 **Usage:**
+
+1. **Access Dashboard**: Visit `http://localhost:3001/monitoring`
+2. **View Statistics**: Monitor server health and user activity
+3. **Track Locations**: See real-time positions on the interactive map
+4. **Monitor Users**: Check driver and client status in the side panels
+5. **Connection Status**: Green indicator shows WebSocket connectivity
+
+### 📱 **Mobile Responsive:**
+The dashboard adapts to different screen sizes:
+- Desktop: Full layout with side panels
+- Tablet: Adjusted grid layout
+- Mobile: Stacked layout with collapsible panels
+
+### 🔧 **Technical Details:**
+- Built with vanilla HTML/CSS/JavaScript
+- Uses Leaflet.js for interactive maps
+- Socket.IO client for real-time updates
+- REST API integration for data fetching
+- Auto-reconnection for WebSocket failures

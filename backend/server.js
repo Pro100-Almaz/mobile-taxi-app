@@ -18,6 +18,9 @@ app.use(cors({
 // Enable JSON parsing
 app.use(express.json())
 
+// Serve static files from public directory
+app.use(express.static('public'))
+
 // Swagger configuration
 const swaggerOptions = {
   definition: {
@@ -395,6 +398,199 @@ app.get('/api/drivers', (req, res) => {
     })
   } catch (error) {
     console.error('Error fetching drivers:', error)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// Monitoring dashboard route
+app.get('/monitoring', (req, res) => {
+  res.sendFile(__dirname + '/public/monitoring.html');
+});
+
+/**
+ * @swagger
+ * /api/clients:
+ *   get:
+ *     summary: Get all connected clients with their locations
+ *     description: Returns a list of all currently connected clients with their location data
+ *     tags: [Clients]
+ *     responses:
+ *       200:
+ *         description: List of connected clients
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 clients:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       clientId:
+ *                         type: string
+ *                         description: Unique client identifier
+ *                       location:
+ *                         type: object
+ *                         properties:
+ *                           lat:
+ *                             type: number
+ *                             description: Latitude coordinate
+ *                           lng:
+ *                             type: number
+ *                             description: Longitude coordinate
+ *                       lastUpdate:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Last location update timestamp
+ *                 totalCount:
+ *                   type: integer
+ *                   description: Total number of connected clients
+ *       500:
+ *         description: Server error
+ */
+app.get('/api/clients', (req, res) => {
+  try {
+    const clients = []
+
+    connectedUsers.forEach((userData, userId) => {
+      if (userData.role === 'client') {
+        clients.push({
+          clientId: userId,
+          location: userData.location,
+          lastUpdate: new Date(userData.lastUpdate).toISOString(),
+          connectedAt: userData.connectedAt ? new Date(userData.connectedAt).toISOString() : null
+        })
+      }
+    })
+
+    res.json({
+      clients,
+      totalCount: clients.length
+    })
+  } catch (error) {
+    console.error('Error fetching clients:', error)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+/**
+ * @swagger
+ * /api/dashboard/stats:
+ *   get:
+ *     summary: Get comprehensive dashboard statistics
+ *     description: Returns detailed statistics for the monitoring dashboard including drivers, clients, rides, and system info
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: Dashboard statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 server:
+ *                   type: object
+ *                   properties:
+ *                     uptime:
+ *                       type: number
+ *                       description: Server uptime in seconds
+ *                     memory:
+ *                       type: object
+ *                       description: Memory usage statistics
+ *                     timestamp:
+ *                       type: string
+ *                       format: date-time
+ *                 drivers:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     online:
+ *                       type: integer
+ *                     locations:
+ *                       type: array
+ *                 clients:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     locations:
+ *                       type: array
+ *                 rides:
+ *                   type: object
+ *                   properties:
+ *                     pending:
+ *                       type: integer
+ *                     active:
+ *                       type: integer
+ *                     completed:
+ *                       type: integer
+ *       500:
+ *         description: Server error
+ */
+app.get('/api/dashboard/stats', (req, res) => {
+  try {
+    const drivers = []
+    const clients = []
+
+    connectedUsers.forEach((userData, userId) => {
+      if (userData.role === 'driver') {
+        drivers.push({
+          driverId: userId,
+          location: userData.location,
+          lastUpdate: userData.lastUpdate,
+          online: activeDrivers.has(userId)
+        })
+      } else if (userData.role === 'client') {
+        clients.push({
+          clientId: userId,
+          location: userData.location,
+          lastUpdate: userData.lastUpdate
+        })
+      }
+    })
+
+    const stats = {
+      server: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        timestamp: new Date().toISOString(),
+        nodeVersion: process.version,
+        platform: process.platform
+      },
+      drivers: {
+        total: drivers.length,
+        online: drivers.filter(d => d.online).length,
+        locations: drivers.map(d => ({
+          id: d.driverId,
+          lat: d.location?.lat,
+          lng: d.location?.lng,
+          online: d.online
+        }))
+      },
+      clients: {
+        total: clients.length,
+        locations: clients.map(c => ({
+          id: c.clientId,
+          lat: c.location?.lat,
+          lng: c.location?.lng
+        }))
+      },
+      rides: {
+        pending: pendingRides.size,
+        active: Array.from(pendingRides.values()).filter(ride => ride.status === 'accepted').length,
+        completed: Array.from(pendingRides.values()).filter(ride => ride.status === 'completed').length
+      },
+      websocket: {
+        connected: io.sockets.sockets.size,
+        external: externalIo.sockets?.sockets?.size || 0
+      }
+    }
+
+    res.json(stats)
+  } catch (error) {
+    console.error('Error fetching dashboard stats:', error)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -995,11 +1191,13 @@ server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`)
   console.log(`📊 Health check: http://localhost:${PORT}/health`)
   console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`)
+  console.log(`📊 Monitoring Dashboard: http://localhost:${PORT}/monitoring`)
   console.log(`🔗 Frontend WebSocket: ws://localhost:${PORT}`)
   console.log(`🔗 External Services WebSocket: ws://localhost:${PORT}/external`)
   console.log(`🚕 Driver Connect: http://localhost:${PORT}/api/drivers/connect`)
   console.log(`🚕 Driver Info: http://localhost:${PORT}/api/drivers/{driverId}`)
   console.log(`🚕 Driver Location: http://localhost:${PORT}/api/drivers/{driverId}/location`)
   console.log(`🚕 All Drivers: http://localhost:${PORT}/api/drivers`)
+  console.log(`🚕 Clients Info: http://localhost:${PORT}/api/clients`)
   console.log(`🚕 Notify Driver: http://localhost:${PORT}/api/rides/notify-driver`)
 })
