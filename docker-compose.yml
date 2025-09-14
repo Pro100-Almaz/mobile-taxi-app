@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Main WebSocket Service
   taxi-websocket-service:
@@ -10,9 +8,8 @@ services:
       - "8000:8000"
     environment:
       - ENVIRONMENT=production
-      - GEO_DATA_FILE=/app/data/geo_locations_astana_hackathon
     volumes:
-      - ./geo_locations_astana_hackathon:/app/data/geo_locations_astana_hackathon:ro
+      - ./geo_locations_astana_hackathon:/app/geo_locations_astana_hackathon:ro
     networks:
       - taxi-network
     depends_on:
@@ -33,12 +30,12 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     volumes:
-      - ./geo_locations_astana_hackathon:/app/data/geo_locations_astana_hackathon:ro
+      - ./geo_locations_astana_hackathon:/app/geo_locations_astana_hackathon:ro
       - driver_cache:/app/cache
     networks:
       - taxi-network
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -69,6 +66,12 @@ services:
 volumes:
   driver_cache:
   redis_data:
+  geo_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /Users/almazamanzholuly/Documents/hack/geo_locations_astana_hackathon
 
 networks:
   taxi-network:

@@ -44,8 +44,8 @@ const DriverDashboard: React.FC = () => {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    // Connect to socket server
-    const newSocket = io('http://localhost:3001') // Adjust URL as needed
+    // Connect to socket server (FastAPI backend)
+    const newSocket = io('http://localhost:8000') // FastAPI backend
     setSocket(newSocket)
 
     // Get current location

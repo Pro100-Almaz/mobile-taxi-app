@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     redis_port: int = 6379
 
     # Data file paths
-    geo_data_file: str = "/app/data/geo_locations_astana_hackathon"
+    geo_data_file: str = "/app/geo_locations_astana_hackathon"
 
     # Driver generation settings
     default_driver_count: int = 10

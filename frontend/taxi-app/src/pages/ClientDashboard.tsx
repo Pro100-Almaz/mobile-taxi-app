@@ -62,9 +62,9 @@ const ClientDashboard: React.FC = () => {
   useEffect(() => {
     let newSocket: Socket | null = null
 
-    // Connect to socket server (you'll need to set up a backend server)
+    // Connect to socket server (FastAPI backend)
     try {
-      newSocket = io('http://localhost:3001') // Adjust URL as needed
+      newSocket = io('http://localhost:8000') // FastAPI backend
       setSocket(newSocket)
     } catch (error) {
       console.warn('Socket connection failed:', error)

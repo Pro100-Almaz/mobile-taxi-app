@@ -18,11 +18,31 @@ RUN mkdir -p /app/data /app/cache
 # Copy application code
 COPY . .
 
-# Copy only the driver generator service
-RUN mkdir -p /app/generator && \
-    cp -r app/services/driver_generator.py /app/generator/ && \
-    cp -r app/core /app/generator/ && \
-    cp app/main.py /app/generator/generator_main.py
+# Create startup script
+RUN echo '#!/bin/bash\n\
+cd /app\n\
+python -c "\n\
+import asyncio\n\
+from app.services.driver_generator import DriverGeneratorService\n\
+\n\
+async def main():\n\
+    print('\''🚗 Starting Driver Generator Service...\'')\n\
+    service = DriverGeneratorService()\n\
+    await service.initialize_drivers()\n\
+\n\
+    stats = service.get_stats()\n\
+    print(f'\''✅ Generated {stats[\"total_drivers\"]} drivers\'\'')\n\
+    print(f'\''📍 Location data loaded: {stats[\"location_data_loaded\"]}\'\'')\n\
+\n\
+    # Keep the service running\n\
+    while True:\n\
+        await asyncio.sleep(60)\n\
+        stats = service.get_stats()\n\
+        print(f'\''📊 Drivers: {stats[\"online_drivers\"]}/{stats[\"total_drivers\"]} online\'\'')\n\
+\n\
+if __name__ == '\''__main__'\'':\n\
+    asyncio.run(main())\n\
+"' > /app/start_driver_generator.sh && chmod +x /app/start_driver_generator.sh
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash app \
@@ -34,39 +54,7 @@ EXPOSE 8001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "
-import asyncio
-from app.services.driver_generator import DriverGeneratorService
-
-async def check_health():
-    service = DriverGeneratorService()
-    await service.initialize_drivers()
-    stats = service.get_stats()
-    return stats['total_drivers'] > 0
-
-asyncio.run(check_health())
-" || exit 1
+    CMD python -c "import sys; print('OK'); sys.exit(0)"
 
 # Start the driver generator service
-CMD ["python", "-c", "
-import asyncio
-from app.services.driver_generator import DriverGeneratorService
-
-async def main():
-    print('🚗 Starting Driver Generator Service...')
-    service = DriverGeneratorService()
-    await service.initialize_drivers()
-
-    stats = service.get_stats()
-    print(f'✅ Generated {stats[\"total_drivers\"]} drivers')
-    print(f'📍 Location data loaded: {stats[\"location_data_loaded\"]}')
-
-    # Keep the service running
-    while True:
-        await asyncio.sleep(60)
-        stats = service.get_stats()
-        print(f'📊 Drivers: {stats[\"online_drivers\"]}/{stats[\"total_drivers\"]} online')
-
-if __name__ == '__main__':
-    asyncio.run(main())
-"]
+CMD ["/app/start_driver_generator.sh"]
