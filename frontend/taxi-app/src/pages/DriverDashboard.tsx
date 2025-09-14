@@ -18,7 +18,7 @@ import {
 import { Logout, Check, Close } from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
 import Map from '../components/Map'
-import { io, Socket } from 'socket.io-client'
+// Removed Socket.IO import, using native WebSocket
 
 interface RideRequest {
   id: string
@@ -37,65 +37,119 @@ interface DriverStatus {
 const DriverDashboard: React.FC = () => {
   const navigate = useNavigate()
   const { userId, logout, displayName } = useAuth()
-  const [socket, setSocket] = useState<Socket | null>(null)
+  const [socket, setSocket] = useState<WebSocket | null>(null)
   const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null)
   const [driverStatus, setDriverStatus] = useState<DriverStatus>({ isOnline: false, currentRide: null })
   const [availableRides, setAvailableRides] = useState<RideRequest[]>([])
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    // Connect to socket server (FastAPI backend)
-    const newSocket = io('http://localhost:8000') // FastAPI backend
-    setSocket(newSocket)
+    let newSocket: WebSocket | null = null
+    let watchId: number | null = null
 
-    // Get current location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords
-          setCurrentLocation([latitude, longitude])
-          newSocket.emit('updateLocation', { userId, lat: latitude, lng: longitude, role: 'driver' })
-        },
-        (error) => {
-          console.error('Error getting location:', error)
-          setMessage('Unable to get your location. Please enable location services.')
-        }
-      )
-
-      // Watch position for real-time updates
-      const watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords
-          setCurrentLocation([latitude, longitude])
-          if (driverStatus.isOnline) {
-            newSocket.emit('updateLocation', { userId, lat: latitude, lng: longitude, role: 'driver' })
-          }
-        },
-        (error) => console.error('Error watching position:', error),
-        { enableHighAccuracy: true, maximumAge: 30000, timeout: 27000 }
-      )
-
-      return () => navigator.geolocation.clearWatch(watchId)
+    // Connect to WebSocket server (FastAPI backend)
+    try {
+      newSocket = new WebSocket('ws://localhost:8000/ws')
+      setSocket(newSocket)
+    } catch (error) {
+      console.warn('WebSocket connection failed:', error)
+      setMessage('Real-time features unavailable - backend server not running')
+      return
     }
 
-    // Listen for ride requests
-    newSocket.on('rideRequest', (rideData: RideRequest) => {
-      if (driverStatus.isOnline && !driverStatus.currentRide) {
-        setAvailableRides(prev => [...prev, rideData])
-        setMessage('New ride request available!')
-      }
-    })
+    // WebSocket event handlers
+    newSocket.onopen = () => {
+      console.log('WebSocket connected to FastAPI backend')
 
-    newSocket.on('rideCancelled', (data: { rideId: string }) => {
-      setAvailableRides(prev => prev.filter(ride => ride.id !== data.rideId))
-      if (driverStatus.currentRide?.id === data.rideId) {
-        setDriverStatus(prev => ({ ...prev, currentRide: null }))
-        setMessage('Ride was cancelled by the client')
+      // Send initial connection message with user info
+      newSocket?.send(JSON.stringify({
+        userId: userId,
+        userType: 'driver'
+      }))
+
+      // Get current location and send update
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords
+            setCurrentLocation([latitude, longitude])
+            newSocket?.send(JSON.stringify({
+              type: 'updateLocation',
+              userId: userId,
+              lat: latitude,
+              lng: longitude,
+              role: 'driver'
+            }))
+          },
+          (error) => {
+            console.error('Error getting location:', error)
+            setMessage('Unable to get your location. Please enable location services.')
+          }
+        )
+
+        // Watch position for real-time updates
+        watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords
+            setCurrentLocation([latitude, longitude])
+            if (driverStatus.isOnline && newSocket && newSocket.readyState === WebSocket.OPEN) {
+              newSocket.send(JSON.stringify({
+                type: 'updateLocation',
+                userId: userId,
+                lat: latitude,
+                lng: longitude,
+                role: 'driver'
+              }))
+            }
+          },
+          (error) => console.error('Error watching position:', error),
+          { enableHighAccuracy: true, maximumAge: 30000, timeout: 27000 }
+        )
       }
-    })
+    }
+
+    newSocket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+
+        if (data.type === 'rideRequest') {
+          if (driverStatus.isOnline && !driverStatus.currentRide) {
+            // Map backend rideId to frontend id
+            const rideData = {
+              ...data,
+              id: data.rideId,
+              userId: data.userId || data.clientId
+            }
+            setAvailableRides(prev => [...prev, rideData])
+            setMessage('New ride request available!')
+          }
+        } else if (data.type === 'rideCancelled') {
+          setAvailableRides(prev => prev.filter(ride => ride.id !== data.rideId))
+          if (driverStatus.currentRide?.id === data.rideId) {
+            setDriverStatus(prev => ({ ...prev, currentRide: null }))
+            setMessage('Ride was cancelled by the client')
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error)
+      }
+    }
+
+    newSocket.onerror = (error) => {
+      console.error('WebSocket error:', error)
+      setMessage('Connection to server lost')
+    }
+
+    newSocket.onclose = () => {
+      console.log('WebSocket connection closed')
+      setSocket(null)
+    }
 
     return () => {
-      newSocket.disconnect()
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId)
+      }
+      newSocket?.close()
     }
   }, [userId, driverStatus.isOnline, driverStatus.currentRide])
 
@@ -103,37 +157,69 @@ const DriverDashboard: React.FC = () => {
     const newStatus = !driverStatus.isOnline
     setDriverStatus(prev => ({ ...prev, isOnline: newStatus }))
 
-    if (newStatus) {
-      socket?.emit('driverOnline', { userId })
-      setMessage('You are now online and available for rides')
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      if (newStatus) {
+        socket.send(JSON.stringify({
+          type: 'driverOnline',
+          userId
+        }))
+        setMessage('You are now online and available for rides')
+      } else {
+        socket.send(JSON.stringify({
+          type: 'driverOffline',
+          userId
+        }))
+        setAvailableRides([])
+        setMessage('You are now offline')
+      }
     } else {
-      socket?.emit('driverOffline', { userId })
-      setAvailableRides([])
-      setMessage('You are now offline')
+      setMessage('Connection to server lost')
     }
   }
 
   const handleAcceptRide = (ride: RideRequest) => {
     setDriverStatus(prev => ({ ...prev, currentRide: { ...ride, status: 'accepted' } }))
     setAvailableRides(prev => prev.filter(r => r.id !== ride.id))
-    socket?.emit('acceptRide', { rideId: ride.id, driverId: userId, clientId: ride.userId })
-    setMessage(`Ride accepted! Head to ${ride.pickup}`)
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: 'acceptRide',
+        rideId: ride.id,
+        driverId: userId,
+        clientId: ride.userId
+      }))
+      setMessage(`Ride accepted! Head to ${ride.pickup}`)
+    } else {
+      setMessage('Connection to server lost')
+    }
   }
 
   const handleRejectRide = (ride: RideRequest) => {
     setAvailableRides(prev => prev.filter(r => r.id !== ride.id))
-    socket?.emit('rejectRide', { rideId: ride.id, driverId: userId })
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: 'rejectRide',
+        rideId: ride.id,
+        driverId: userId
+      }))
+    }
   }
 
   const handleCompleteRide = () => {
     if (driverStatus.currentRide) {
-      socket?.emit('completeRide', {
-        rideId: driverStatus.currentRide.id,
-        driverId: userId,
-        clientId: driverStatus.currentRide.userId
-      })
-      setDriverStatus(prev => ({ ...prev, currentRide: null }))
-      setMessage('Ride completed successfully!')
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: 'completeRide',
+          rideId: driverStatus.currentRide.id,
+          driverId: userId,
+          clientId: driverStatus.currentRide.userId
+        }))
+        setDriverStatus(prev => ({ ...prev, currentRide: null }))
+        setMessage('Ride completed successfully!')
+      } else {
+        setMessage('Connection to server lost')
+      }
     }
   }
 

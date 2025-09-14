@@ -17,7 +17,7 @@ import { useAuth } from '../contexts/AuthContext'
 import Map from '../components/Map'
 import LocationConfirmationDialog from '../components/LocationConfirmationDialog'
 import RideAcceptedModal from '../components/RideAcceptedModal'
-import { io, Socket } from 'socket.io-client'
+// Removed Socket.IO import, using native WebSocket
 
 interface RideRequest {
   id: string
@@ -47,7 +47,7 @@ interface RideAcceptedData {
 const ClientDashboard: React.FC = () => {
   const navigate = useNavigate()
   const { userId, logout, displayName } = useAuth()
-  const [socket, setSocket] = useState<Socket | null>(null)
+  const [socket, setSocket] = useState<WebSocket | null>(null)
   const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null)
   const [pickupLocation, setPickupLocation] = useState<[number, number] | null>(null)
   const [destination, setDestination] = useState<[number, number] | null>(null)
@@ -60,52 +60,84 @@ const ClientDashboard: React.FC = () => {
   const [acceptedRideData, setAcceptedRideData] = useState<RideAcceptedData | null>(null)
 
   useEffect(() => {
-    let newSocket: Socket | null = null
+    let newSocket: WebSocket | null = null
 
-    // Connect to socket server (FastAPI backend)
+    // Connect to WebSocket server (FastAPI backend)
     try {
-      newSocket = io('http://localhost:8000') // FastAPI backend
+      newSocket = new WebSocket('ws://localhost:8000/ws')
       setSocket(newSocket)
     } catch (error) {
-      console.warn('Socket connection failed:', error)
+      console.warn('WebSocket connection failed:', error)
       setMessage('Real-time features unavailable - backend server not running')
       return // Exit early if socket creation failed
     }
 
-    // Get current location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords
-          setCurrentLocation([latitude, longitude])
-          newSocket?.emit('updateLocation', { userId, lat: latitude, lng: longitude, role: 'client' })
-        },
-        (error) => {
-          console.error('Error getting location:', error)
-          setMessage('Unable to get your location. Please enable location services.')
-        }
-      )
+    // WebSocket event handlers
+    newSocket.onopen = () => {
+      console.log('WebSocket connected to FastAPI backend')
+
+      // Send initial connection message with user info
+      newSocket?.send(JSON.stringify({
+        userId: userId,
+        userType: 'client'
+      }))
+
+      // Get current location and send update
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords
+            setCurrentLocation([latitude, longitude])
+            newSocket?.send(JSON.stringify({
+              type: 'updateLocation',
+              userId: userId,
+              lat: latitude,
+              lng: longitude,
+              role: 'client'
+            }))
+          },
+          (error) => {
+            console.error('Error getting location:', error)
+            setMessage('Unable to get your location. Please enable location services.')
+          }
+        )
+      }
     }
 
-    // Listen for ride updates
-    newSocket.on('rideAccepted', (data: RideAcceptedData) => {
-      setRideStatus(prev => prev ? { ...prev, status: 'accepted', driverId: data.driverId } : null)
-      setAcceptedRideData(data)
-      setModalOpen(true)
-      setMessage('Your ride has been accepted!')
+    newSocket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
 
-      // Play notification sound and show browser notification
-      playNotificationSound()
-      showBrowserNotification(data)
-    })
+        if (data.type === 'rideAccepted') {
+          setRideStatus(prev => prev ? { ...prev, status: 'accepted', driverId: data.driverId } : null)
+          setAcceptedRideData(data)
+          setModalOpen(true)
+          setMessage('Your ride has been accepted!')
 
-    newSocket.on('rideCompleted', () => {
-      setRideStatus(prev => prev ? { ...prev, status: 'completed' } : null)
-      setMessage('Your ride has been completed!')
-    })
+          // Play notification sound and show browser notification
+          playNotificationSound()
+          showBrowserNotification(data)
+        } else if (data.type === 'rideCompleted') {
+          setRideStatus(prev => prev ? { ...prev, status: 'completed' } : null)
+          setMessage('Your ride has been completed!')
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error)
+      }
+    }
+
+    newSocket.onerror = (error) => {
+      console.error('WebSocket error:', error)
+      setMessage('Connection to server lost')
+    }
+
+    newSocket.onclose = () => {
+      console.log('WebSocket connection closed')
+      setSocket(null)
+    }
 
     return () => {
-      newSocket?.disconnect()
+      newSocket?.close()
     }
   }, [userId])
 
@@ -123,14 +155,15 @@ const ClientDashboard: React.FC = () => {
     }
 
     setRideStatus(rideRequest)
-    if (socket) {
-      socket.emit('requestRide', {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: 'requestRide',
         rideId: rideRequest.id,
         userId,
         pickupLocation: pickupLocation,
         destinationLocation: destination,
         location: currentLocation
-      })
+      }))
       setMessage('Ride requested! Waiting for a driver...')
     } else {
       setMessage('Ride requested! (Real-time features unavailable)')
@@ -139,8 +172,12 @@ const ClientDashboard: React.FC = () => {
 
   const handleCancelRide = () => {
     if (rideStatus) {
-      if (socket) {
-        socket.emit('cancelRide', { rideId: rideStatus.id, userId })
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: 'cancelRide',
+          rideId: rideStatus.id,
+          userId
+        }))
       }
       setRideStatus(null)
       setMessage('Ride cancelled')
