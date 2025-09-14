@@ -155,3 +155,28 @@ temp/
 
 # Application specific
 # Add any project-specific ignores here
+
+# Geo data files
+geo_*
+*.geojson
+*.gpx
+
+# Cache files
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/settings.json
+.idea/workspace.xml
+
+# OS specific
+.DS_Store
+Thumbs.db
