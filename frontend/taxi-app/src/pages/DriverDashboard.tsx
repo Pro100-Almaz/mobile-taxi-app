@@ -49,7 +49,7 @@ const DriverDashboard: React.FC = () => {
 
     // Connect to WebSocket server (FastAPI backend)
     try {
-      newSocket = new WebSocket('ws://localhost:8000/ws')
+      newSocket = new WebSocket('ws://localhost:8000/ws/')
       setSocket(newSocket)
     } catch (error) {
       console.warn('WebSocket connection failed:', error)
