@@ -7,17 +7,16 @@ import {
   Box,
   Card,
   CardContent,
-  TextField,
   Alert,
   Chip,
-  Fab,
   ToggleButton,
   ToggleButtonGroup
 } from '@mui/material'
-import { MyLocation, Logout, LocationOn, Flag } from '@mui/icons-material'
+import { Logout, LocationOn, Flag } from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
 import Map from '../components/Map'
 import LocationConfirmationDialog from '../components/LocationConfirmationDialog'
+import RideAcceptedModal from '../components/RideAcceptedModal'
 import { io, Socket } from 'socket.io-client'
 
 interface RideRequest {
@@ -28,9 +27,26 @@ interface RideRequest {
   driverId?: string
 }
 
+interface RideAcceptedData {
+  rideId: string
+  driverId: string
+  driverName: string
+  driverLocation?: [number, number]
+  vehicleType?: string
+  licensePlate?: string
+  pickupLocation: [number, number]
+  destinationLocation: [number, number]
+  acceptedAt: string
+  estimatedArrivalTime?: {
+    distance: number
+    estimatedMinutes: number
+    estimatedArrival: string
+  }
+}
+
 const ClientDashboard: React.FC = () => {
   const navigate = useNavigate()
-  const { userId, setUserRole } = useAuth()
+  const { userId, logout, displayName } = useAuth()
   const [socket, setSocket] = useState<Socket | null>(null)
   const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null)
   const [pickupLocation, setPickupLocation] = useState<[number, number] | null>(null)
@@ -40,6 +56,8 @@ const ClientDashboard: React.FC = () => {
   const [selectionMode, setSelectionMode] = useState<'pickup' | 'destination' | null>(null)
   const [tempLocation, setTempLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [confirmationOpen, setConfirmationOpen] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [acceptedRideData, setAcceptedRideData] = useState<RideAcceptedData | null>(null)
 
   useEffect(() => {
     let newSocket: Socket | null = null
@@ -70,9 +88,15 @@ const ClientDashboard: React.FC = () => {
     }
 
     // Listen for ride updates
-    newSocket.on('rideAccepted', (data: { rideId: string; driverId: string }) => {
+    newSocket.on('rideAccepted', (data: RideAcceptedData) => {
       setRideStatus(prev => prev ? { ...prev, status: 'accepted', driverId: data.driverId } : null)
+      setAcceptedRideData(data)
+      setModalOpen(true)
       setMessage('Your ride has been accepted!')
+
+      // Play notification sound and show browser notification
+      playNotificationSound()
+      showBrowserNotification(data)
     })
 
     newSocket.on('rideCompleted', () => {
@@ -157,7 +181,7 @@ const ClientDashboard: React.FC = () => {
   }
 
   const handleLogout = () => {
-    setUserRole(null)
+    logout()
     navigate('/')
   }
 
@@ -171,12 +195,77 @@ const ClientDashboard: React.FC = () => {
     }
   }
 
+  // Play notification sound using Web Audio API
+  const playNotificationSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+
+      oscillator.frequency.value = 800 // Frequency in Hz
+      oscillator.type = 'sine'
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
+
+      oscillator.start(audioContext.currentTime)
+      oscillator.stop(audioContext.currentTime + 0.5)
+    } catch (error) {
+      console.log('Web Audio API not supported, trying fallback...')
+      // Fallback: try to play a simple beep
+      try {
+        // Create a simple beep using data URL
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA')
+        audio.volume = 0.3
+        audio.play().catch(e => console.log('Audio fallback failed:', e))
+      } catch (e) {
+        console.log('Audio fallback not available')
+      }
+    }
+  }
+
+  // Show browser notification
+  const showBrowserNotification = (data: RideAcceptedData) => {
+    if ('Notification' in window) {
+      if (Notification.permission === 'granted') {
+        const notification = new Notification('🚗 Ride Accepted!', {
+          body: `${data.driverName} is on the way! ETA: ${data.estimatedArrivalTime?.estimatedMinutes || 'TBD'} min`,
+          icon: '/favicon.ico',
+          badge: '/favicon.ico',
+          tag: 'ride-accepted'
+        })
+
+        notification.onclick = () => {
+          window.focus()
+          notification.close()
+        }
+
+        // Auto-close after 5 seconds
+        setTimeout(() => notification.close(), 5000)
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            showBrowserNotification(data)
+          }
+        })
+      }
+    }
+  }
+
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          Client Dashboard
-        </Typography>
+        <Box>
+          <Typography variant="h4" component="h1">
+            Client Dashboard
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            Welcome back, {displayName}
+          </Typography>
+        </Box>
         <Button
           variant="outlined"
           startIcon={<Logout />}
@@ -352,6 +441,13 @@ const ClientDashboard: React.FC = () => {
         onConfirm={handleConfirmLocation}
         location={tempLocation}
         type={selectionMode || 'pickup'}
+      />
+
+      {/* Ride Accepted Notification Modal */}
+      <RideAcceptedModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        rideData={acceptedRideData}
       />
     </Container>
   )

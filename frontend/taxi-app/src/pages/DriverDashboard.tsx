@@ -9,14 +9,13 @@ import {
   CardContent,
   Alert,
   Chip,
-  Fab,
   List,
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
   IconButton
 } from '@mui/material'
-import { MyLocation, Logout, Check, Close } from '@mui/icons-material'
+import { Logout, Check, Close } from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
 import Map from '../components/Map'
 import { io, Socket } from 'socket.io-client'
@@ -37,7 +36,7 @@ interface DriverStatus {
 
 const DriverDashboard: React.FC = () => {
   const navigate = useNavigate()
-  const { userId, setUserRole } = useAuth()
+  const { userId, logout, displayName } = useAuth()
   const [socket, setSocket] = useState<Socket | null>(null)
   const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null)
   const [driverStatus, setDriverStatus] = useState<DriverStatus>({ isOnline: false, currentRide: null })
@@ -139,16 +138,21 @@ const DriverDashboard: React.FC = () => {
   }
 
   const handleLogout = () => {
-    setUserRole(null)
+    logout()
     navigate('/')
   }
 
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          Driver Dashboard
-        </Typography>
+        <Box>
+          <Typography variant="h4" component="h1">
+            Driver Dashboard
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            Welcome back, {displayName}
+          </Typography>
+        </Box>
         <Button
           variant="outlined"
           startIcon={<Logout />}

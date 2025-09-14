@@ -1,419 +1,340 @@
-# Taxi App Backend
+# 🚕 Taxi Backend Services
 
-Socket.IO server for the taxi booking application with real-time communication between drivers and clients.
+A comprehensive backend system for a taxi application built with FastAPI, featuring WebSocket communication and driver management.
 
-## Features
+## 📁 Project Structure
 
-- **Real-time Location Tracking**: Track driver and client locations in real-time
-- **Ride Management**: Handle ride requests, acceptances, rejections, and completions
-- **Driver Availability**: Manage online/offline status of drivers
-- **Cross-Origin Support**: CORS enabled for frontend connections
-- **Health Monitoring**: Basic health check endpoint
+```
+backend/
+├── docker-compose.yml          # Docker Compose configuration
+├── nginx.conf                  # Nginx reverse proxy configuration
+├── geo_locations_astana_hackathon  # Astana GPS coordinates data
+└── services/
+    ├── websocket-service/      # WebSocket communication service
+    │   ├── main.py            # FastAPI WebSocket application
+    │   ├── requirements.txt    # Python dependencies
+    │   └── Dockerfile         # Docker configuration
+    └── driver-generator/       # Driver management service
+        ├── main.py            # FastAPI driver generator
+        ├── requirements.txt    # Python dependencies
+        └── Dockerfile         # Docker configuration
+```
 
-## Tech Stack
+## 🚀 Services Overview
 
-- **Runtime**: Node.js
-- **Web Framework**: Express.js
-- **Real-time Communication**: Socket.IO with multiple namespaces
-- **API Documentation**: Swagger/OpenAPI with swagger-jsdoc and swagger-ui-express
-- **CORS**: Enabled for cross-origin requests
+### 1. WebSocket Service (`websocket-service`)
+- **Port**: 8000
+- **Purpose**: Handles real-time communication between clients and drivers
+- **Features**:
+  - WebSocket connections for live updates
+  - Ride request processing and driver assignment
+  - Location tracking and ETA calculations
+  - Redis-based data storage
+  - CORS enabled for frontend integration
 
-## Installation
+### 2. Driver Generator Service (`driver-generator`)
+- **Port**: 8001
+- **Purpose**: Generates and manages random driver accounts
+- **Features**:
+  - Generates 10 random drivers with Astana locations
+  - Uses GPS data from `geo_locations_astana_hackathon`
+  - Kazakh names and realistic vehicle data
+  - Redis-based driver state management
+  - RESTful API for driver operations
 
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
+### 3. Redis Database
+- **Port**: 6379
+- **Purpose**: Shared data store for both services
+- **Usage**: User sessions, driver data, ride information
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+### 4. Nginx Reverse Proxy
+- **Port**: 80
+- **Purpose**: Load balancing and API gateway
+- **Routes**:
+  - `/ws/` → WebSocket service
+  - `/drivers/` → Driver generator service
+  - `/health` → Health check
 
-## Usage
+## 🛠️ Quick Start
 
-### Development Mode (with auto-restart)
+### Prerequisites
+- Docker and Docker Compose
+- Git
+
+### 1. Clone and Navigate
 ```bash
-npm run dev
+cd /path/to/your/backend/directory
 ```
 
-### Production Mode
+### 2. Start All Services
 ```bash
-npm start
+docker-compose up --build
 ```
 
-### Testing Monitoring Features
+### 3. Verify Services
 ```bash
-npm run test-monitoring
-```
-This will test all the new monitoring endpoints and provide example usage.
+# Check if services are running
+curl http://localhost/health
 
-The server will start on `http://localhost:3001`
+# Check driver generator
+curl http://localhost/drivers/health
 
-## API Endpoints
-
-### REST API Endpoints
-
-#### Health Check
-- **GET** `/health`
-- Returns server status and statistics
-
-#### Drivers Management
-- **GET** `/api/drivers`
-- Returns all available drivers with their current locations
-- Useful for external services to calculate distances and assign optimal drivers
-
-- **POST** `/api/drivers/connect`
-- Connect/register a driver with location and status
-- Useful for driver onboarding and initial setup
-
-- **GET** `/api/drivers/{driverId}`
-- Get detailed information about a specific driver
-- Includes location, status, vehicle details, and timestamps
-
-- **PUT** `/api/drivers/{driverId}/location`
-- Update a driver's location coordinates
-- Alternative to WebSocket location updates
-
-#### Ride Notifications
-- **POST** `/api/rides/notify-driver`
-- Send ride notification to a specific driver
-- Useful for spawning random riders and assigning to most suitable driver
-
-#### API Documentation
-- **GET** `/api-docs`
-- Interactive Swagger/OpenAPI documentation for all endpoints
-
-#### Monitoring Dashboard
-- **GET** `/monitoring`
-- Real-time web dashboard for monitoring drivers and clients
-- Features:
-  - Live map with driver and client locations
-  - Real-time statistics (connections, rides, memory usage)
-  - Driver and client lists with status indicators
-  - WebSocket connection status
-  - Auto-refresh every 30 seconds
-
-## Socket.IO Events
-
-### Client → Server Events
-
-#### Location Updates
-```javascript
-socket.emit('updateLocation', {
-  userId: 'client_123',
-  lat: 51.505,
-  lng: -0.09,
-  role: 'client' // or 'driver'
-})
+# Check websocket service
+curl http://localhost/ws/health
 ```
 
-#### Ride Requests
-```javascript
-socket.emit('requestRide', {
-  rideId: 'ride_123',
-  userId: 'client_123',
-  pickupLocation: [51.505, -0.09],
-  destinationLocation: [51.515, -0.08],
-  location: [51.505, -0.09]
-})
-```
+## 📡 API Endpoints
 
-#### Ride Cancellation
-```javascript
-socket.emit('cancelRide', {
-  rideId: 'ride_123',
-  userId: 'client_123'
-})
-```
-
-### Driver → Server Events
-
-#### Driver Status
-```javascript
-// Go online
-socket.emit('driverOnline', { userId: 'driver_456' })
-
-// Go offline
-socket.emit('driverOffline', { userId: 'driver_456' })
-```
-
-#### Ride Actions
-```javascript
-// Accept ride
-socket.emit('acceptRide', {
-  rideId: 'ride_123',
-  driverId: 'driver_456',
-  clientId: 'client_123'
-})
-
-// Reject ride
-socket.emit('rejectRide', {
-  rideId: 'ride_123',
-  driverId: 'driver_456'
-})
-
-// Complete ride
-socket.emit('completeRide', {
-  rideId: 'ride_123',
-  driverId: 'driver_456',
-  clientId: 'client_123'
-})
-```
-
-### Server → Client Events
-
-#### Ride Notifications
-```javascript
-// New ride request (to drivers)
-socket.on('rideRequest', (data) => {
-  // data: { id, userId, pickup, destination, location }
-})
-
-// Ride accepted (to client)
-socket.on('rideAccepted', (data) => {
-  // data: { rideId, driverId }
-})
-
-// Ride completed (to client)
-socket.on('rideCompleted', () => {
-  // Ride finished
-})
-
-// Ride cancelled (to drivers)
-socket.on('rideCancelled', (data) => {
-  // data: { rideId }
-})
-```
-
-#### Location Updates
-```javascript
-// Other users' location updates
-socket.on('userLocationUpdate', (data) => {
-  // data: { userId, location: { lat, lng }, role }
-})
-
-// Available drivers list
-socket.on('driversAvailable', (drivers) => {
-  // drivers: array of driver IDs
-})
-```
-
-## WebSocket Namespaces
-
-### Main Namespace (/)
-For client and driver applications connecting to the taxi service.
-
-### External Services Namespace (/external)
-Dedicated namespace for external monitoring and integration services:
-
-#### Server → External Service Events
-```javascript
-// Initial data when connecting
-socket.on('initialData', (data) => {
-  // data: { drivers: [...], pendingRides: [...] }
-})
-
-// Real-time driver location updates
-socket.on('driverLocationUpdate', (data) => {
-  // data: { driverId, location: { lat, lng }, lastUpdate }
-})
-
-// Driver status changes
-socket.on('driverStatusChange', (data) => {
-  // data: { driverId, status: 'online'|'offline', timestamp }
-})
-
-// New ride requests
-socket.on('rideCreated', (data) => {
-  // data: { rideId, clientId, pickupLocation, destinationLocation, ... }
-})
-
-// Ride accepted
-socket.on('rideAccepted', (data) => {
-  // data: { rideId, driverId, clientId, ... }
-})
-
-// Ride completed
-socket.on('rideCompleted', (data) => {
-  // data: { rideId, driverId, clientId, completedAt }
-})
-```
-
-#### External Service → Server Events
-```javascript
-// Request specific driver location
-socket.emit('requestDriverLocation', { driverId: 'driver_123' })
-
-// Response
-socket.on('driverLocation', (data) => {
-  // data: { driverId, location: { lat, lng }, lastUpdate }
-})
-
-socket.on('driverNotFound', (data) => {
-  // data: { driverId }
-})
-```
-
-## Architecture
-
-- **Connected Users**: Map storing all connected users with their socket IDs and locations
-- **Active Drivers**: Set of currently online drivers
-- **Pending Rides**: Map of ride requests waiting for driver acceptance
-- **Real-time Communication**: All ride operations happen in real-time via WebSocket
-- **External Services**: Dedicated WebSocket namespace for monitoring and integration services
-- **REST API**: Additional HTTP endpoints for external service integration
-
-## Development
-
-The server includes comprehensive logging for debugging:
-- User connections/disconnections
-- Location updates
-- Ride requests and responses
-- Driver status changes
-
-## Monitoring & Documentation
-
-### Health Check
-Visit `http://localhost:3001/health` to see:
-- Server status
-- Number of connected users
-- Number of active drivers
-- Number of pending rides
-- Server timestamp
-
-### API Documentation
-Visit `http://localhost:3001/api-docs` for interactive Swagger documentation including:
-- REST API endpoints with examples
-- Request/response schemas
-- WebSocket event documentation
-- External services integration guide
-
-### Available Endpoints
-- **Health**: `GET /health`
-- **API Docs**: `GET /api-docs`
-- **Monitoring Dashboard**: `GET /monitoring`
-- **Drivers List**: `GET /api/drivers`
-- **Driver Connect**: `POST /api/drivers/connect`
-- **Driver Info**: `GET /api/drivers/{driverId}`
-- **Driver Location**: `PUT /api/drivers/{driverId}/location`
-- **Clients List**: `GET /api/clients`
-- **Dashboard Stats**: `GET /api/dashboard/stats`
-- **Notify Driver**: `POST /api/rides/notify-driver`
-- **Main WebSocket**: `ws://localhost:3001/`
-- **External Services WebSocket**: `ws://localhost:3001/external`
-
-### Driver API Examples
-
-#### Connect a Driver
+### WebSocket Service (Port 8000)
 ```bash
-curl -X POST http://localhost:3001/api/drivers/connect \
-  -H "Content-Type: application/json" \
-  -d '{
-    "driverId": "driver_123",
-    "lat": 51.505,
-    "lng": -0.09,
-    "status": "online",
-    "name": "John Smith",
+# Health check
+GET /health
+
+# System statistics
+GET /stats
+
+# Get ride details
+GET /rides/{ride_id}
+```
+
+### Driver Generator Service (Port 8001)
+```bash
+# Health check
+GET /health
+
+# Get all drivers
+GET /drivers
+
+# Get specific driver
+GET /drivers/{driver_id}
+
+# Update driver location
+POST /drivers/{driver_id}/location?lat={lat}&lng={lng}
+
+# Update driver status
+POST /drivers/{driver_id}/status?status={online|offline}
+
+# Get online drivers
+GET /drivers/online
+
+# Regenerate all drivers
+POST /drivers/regenerate
+
+# Get driver statistics
+GET /stats
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+```bash
+# WebSocket Service
+REDIS_URL=redis://redis:6379
+DRIVER_SERVICE_URL=http://driver-generator:8001
+
+# Driver Generator Service
+REDIS_URL=redis://redis:6379
+```
+
+### Data Source
+- **File**: `geo_locations_astana_hackathon`
+- **Format**: CSV with columns: `randomized_id,lat,lng,alt,spd,azm`
+- **Usage**: Random location selection for driver generation
+- **Location**: Kazakhstan, Astana region
+
+## 🔌 WebSocket Events
+
+### Client → Server
+```javascript
+// Initial connection
+{
+  "userId": "client_123",
+  "role": "client"
+}
+
+// Location update
+{
+  "type": "updateLocation",
+  "lat": 51.505,
+  "lng": -0.09
+}
+
+// Ride request
+{
+  "type": "requestRide",
+  "rideId": "ride_123",
+  "userId": "client_123",
+  "pickupLocation": [51.505, -0.09],
+  "destinationLocation": [51.515, -0.08],
+  "location": [51.505, -0.09]
+}
+
+// Ride acceptance/rejection
+{
+  "type": "acceptRide",
+  "rideId": "ride_123",
+  "driverId": "driver_001",
+  "clientId": "client_123"
+}
+```
+
+### Server → Client
+```javascript
+// Ride accepted (triggers modal!)
+{
+  "type": "rideAccepted",
+  "data": {
+    "rideId": "ride_123",
+    "driverId": "driver_001",
+    "driverName": "Aizhan Beketov",
+    "driverLocation": [51.507, -0.08],
     "vehicleType": "sedan",
-    "licensePlate": "ABC-123"
-  }'
+    "licensePlate": "123ABC456",
+    "pickupLocation": [51.505, -0.09],
+    "destinationLocation": [51.515, -0.08],
+    "acceptedAt": "2024-01-01T12:00:00.000Z",
+    "estimatedArrivalTime": {
+      "distance": 2.5,
+      "estimatedMinutes": 8,
+      "estimatedArrival": "2024-01-01T12:08:00.000Z"
+    }
+  }
+}
 ```
 
-#### Get Driver Information
+## 🎯 Driver Generation
+
+### Features
+- **10 Random Drivers**: Generated on startup
+- **Kazakh Names**: Authentic local names
+- **Vehicle Variety**: Sedan, SUV, hatchback, minivan, coupe
+- **Real Locations**: Uses Astana GPS coordinates
+- **Ratings**: 4.0-5.0 star ratings
+- **Experience**: 50-1000 total rides
+
+### Sample Driver Data
+```json
+{
+  "driverId": "driver_001",
+  "name": "Aizhan Beketov",
+  "vehicleType": "sedan",
+  "licensePlate": "123ABC456",
+  "location": [51.09546, 71.42753],
+  "status": "offline",
+  "rating": 4.7,
+  "totalRides": 245
+}
+```
+
+## 🧪 Testing
+
+### 1. Manual Testing
 ```bash
-curl http://localhost:3001/api/drivers/driver_123
+# Start services
+docker-compose up
+
+# In another terminal, test endpoints
+curl http://localhost/drivers
+curl http://localhost/ws/health
 ```
 
-#### Update Driver Location
+### 2. Frontend Integration
+Update your frontend Socket.IO URL to:
+```javascript
+const socket = io('http://localhost');
+```
+
+### 3. WebSocket Testing
+```javascript
+// Connect to WebSocket
+const socket = io('http://localhost/ws', {
+  transports: ['websocket']
+});
+
+// Send test data
+socket.emit('test', { message: 'Hello Backend!' });
+```
+
+## 📊 Monitoring
+
+### Health Checks
+- **Overall**: `http://localhost/health`
+- **WebSocket**: `http://localhost/ws/health`
+- **Drivers**: `http://localhost/drivers/health`
+
+### Logs
 ```bash
-curl -X PUT http://localhost:3001/api/drivers/driver_123/location \
-  -H "Content-Type: application/json" \
-  -d '{
-    "lat": 51.507,
-    "lng": -0.08
-  }'
+# View all service logs
+docker-compose logs
+
+# View specific service logs
+docker-compose logs websocket-service
+docker-compose logs driver-generator
+docker-compose logs redis
 ```
 
-#### Get All Available Drivers
+## 🔄 Scaling
+
+### Horizontal Scaling
+```yaml
+# Add multiple instances
+websocket-service:
+  scale: 3
+  ...
+
+driver-generator:
+  scale: 2
+  ...
+```
+
+### Load Balancing
+Nginx automatically distributes requests across scaled instances.
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Port Conflicts**
+   ```bash
+   # Check what's using ports
+   lsof -i :8000
+   lsof -i :8001
+   lsof -i :6379
+   ```
+
+2. **Redis Connection Issues**
+   ```bash
+   # Check Redis status
+   docker-compose exec redis redis-cli ping
+   ```
+
+3. **Service Dependencies**
+   ```bash
+   # Restart specific service
+   docker-compose restart websocket-service
+   ```
+
+### Debug Mode
 ```bash
-curl http://localhost:3001/api/drivers
+# Run with debug logs
+docker-compose up --build --verbose
 ```
 
-#### Get All Clients
-```bash
-curl http://localhost:3001/api/clients
-```
+## 📈 Performance
 
-#### Get Dashboard Statistics
-```bash
-curl http://localhost:3001/api/dashboard/stats
-```
+- **Redis**: In-memory data storage for fast access
+- **WebSocket**: Real-time communication with low latency
+- **Docker**: Containerized services for consistent deployment
+- **Nginx**: Efficient reverse proxy and load balancing
 
-## Monitoring Dashboard
+## 🤝 Contributing
 
-The monitoring dashboard provides a comprehensive real-time view of your taxi app's operations:
+1. Fork the repository
+2. Create a feature branch
+3. Make changes
+4. Test thoroughly
+5. Submit a pull request
 
-### 🌟 **Key Features:**
+## 📄 License
 
-#### **📊 Real-time Statistics**
-- Total WebSocket connections
-- Active vs total drivers
-- Connected clients count
-- Pending and active rides
-- Server uptime and memory usage
-- Monitoring connections count
-
-#### **🗺️ Interactive Map**
-- Live driver locations with custom markers (🚗)
-- Client locations with custom markers (👤)
-- Color-coded status indicators:
-  - 🟢 Green: Active/Online
-  - 🔴 Red: Inactive/Offline
-  - ⚪ Gray: Unknown status
-- Auto-fitting map bounds to show all users
-- Click markers for detailed information
-
-#### **👥 User Lists**
-- **Drivers Panel**: Shows all registered drivers with locations and status
-- **Clients Panel**: Shows all connected clients with locations and activity
-- Real-time status indicators
-- Last update timestamps
-- Location coordinates display
-
-#### **🔄 Real-time Updates**
-- WebSocket connection to `/external` namespace
-- Automatic data refresh every 30 seconds
-- Live updates for:
-  - Driver location changes
-  - Driver status changes (online/offline)
-  - Ride creation/acceptance/completion
-  - New client connections
-
-#### **🎨 Modern UI**
-- Responsive design for desktop and mobile
-- Beautiful gradient backgrounds
-- Smooth animations and transitions
-- Professional card-based layout
-- Connection status indicator
-
-### 🚀 **Usage:**
-
-1. **Access Dashboard**: Visit `http://localhost:3001/monitoring`
-2. **View Statistics**: Monitor server health and user activity
-3. **Track Locations**: See real-time positions on the interactive map
-4. **Monitor Users**: Check driver and client status in the side panels
-5. **Connection Status**: Green indicator shows WebSocket connectivity
-
-### 📱 **Mobile Responsive:**
-The dashboard adapts to different screen sizes:
-- Desktop: Full layout with side panels
-- Tablet: Adjusted grid layout
-- Mobile: Stacked layout with collapsible panels
-
-### 🔧 **Technical Details:**
-- Built with vanilla HTML/CSS/JavaScript
-- Uses Leaflet.js for interactive maps
-- Socket.IO client for real-time updates
-- REST API integration for data fetching
-- Auto-reconnection for WebSocket failures
+This project is part of the Astana Taxi Hackathon. See LICENSE file for details.
